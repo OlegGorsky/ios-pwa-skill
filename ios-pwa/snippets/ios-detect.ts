@@ -1,6 +1,6 @@
 /**
- * Определение iOS / iPadOS / установленной PWA.
- * iPadOS 13+ представляется как Mac, поэтому отличаем его по наличию тач-экрана.
+ * iOS / iPadOS / installed-PWA detection.
+ * iPadOS 13+ reports a Mac UA, so touch points tell it apart.
  */
 export function isAppleMobile(ua = navigator.userAgent, maxTouchPoints = navigator.maxTouchPoints ?? 0) {
 	const s = ua.toLowerCase()

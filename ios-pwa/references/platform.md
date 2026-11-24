@@ -1,64 +1,56 @@
-# Платформа: установка, окружение, манифест, хранилище, жизненный цикл
+# Platform: install, environment, manifest, storage, lifecycle
 
-Читай этот файл, когда настраиваешь манифест и иконки, экран установки, авторизацию и сессии,
-хранение данных, офлайн-режим, определение устройства или разбираешь баг, который есть только
-у части пользователей iPhone. Пункты с 🔎 — из открытых источников, не проверены на исходном
-проекте (ссылки — в `research-2026.md`).
+Read when configuring the manifest and icons, the install screen, auth and sessions, storage,
+offline mode, device detection, or when a bug affects only some iPhone users. 🔎 = public sources,
+not verified on the source project (links in `research-2026.md`).
 
-## Проверено на исходном проекте
+## Verified on the source project
 
-- Safari-вкладка и установленная PWA — разные хранилища и разные cookie-сессии. Сессию
-  восстанавливай из httpOnly-cookie с ротацией refresh-токена, не полагайся только на
-  localStorage.
-- В Safari-вкладке данные сайта стираются после 7 дней без визитов.
-- Событий `beforeinstallprompt` и `appinstalled` на iOS нет — нужен свой экран с инструкцией
-  установки.
-- WebSocket после сна телефона остаётся «открытым», но не работает. При `visibilitychange`
-  (страница снова видима) отправь ping и пересоздай соединение, если ответа нет за 4 секунды;
-  после переподключения догрузи пропущенные сообщения.
+- Safari tab and installed PWA have separate storage and separate cookie sessions. Restore the
+  session from an httpOnly cookie with refresh-token rotation; never rely on localStorage alone.
+- In a Safari tab, site data is wiped after 7 days without a visit.
+- iOS has no `beforeinstallprompt` or `appinstalled` events — build your own install-instruction screen.
+- After the phone sleeps, a WebSocket stays "open" but dead. On `visibilitychange` (page visible)
+  send a ping and recreate the socket if there is no reply within 4 seconds; after reconnecting,
+  fetch the messages missed meanwhile.
 
-## 🔎 Установка и окружение
+## 🔎 Install and environment
 
-- **iOS/iPadOS 26 и новее: любой сайт**, добавленный на экран «Домой», по умолчанию открывается
-  как веб-приложение, даже без манифеста (пользователь может выключить «Open as Web App»).
-  Поэтому баги установленной PWA (скачивание, отсутствие кнопки «назад», отдельное хранилище)
-  касаются и обычных сайтов — проверяй сайт и в этом режиме.
-- У установленной PWA своё хранилище, cookies и разрешения. С iOS 17.2 cookies входа
-  копируются из Safari при установке. Удаление иконки стирает данные приложения и его
-  push-подписку.
-- Установка из других браузеров — с iOS 16.4.
-- В iOS 26 и новее User-Agent показывает замороженную версию ОС (например, `OS 18_6`),
-  меняется только `Version/26.x`. Не определяй версию iOS по User-Agent — проверяй возможности:
-  `'PushManager' in window`, `CSS.supports(...)`, `MediaRecorder.isTypeSupported(...)`.
-- Все браузеры на iPhone работают на WebKit (исключения — ЕС и Япония, с условиями): Chrome на
-  iOS повторяет баги Safari.
-- Сборка: lookbehind в регулярных выражениях (`(?<=…)`) поддерживается только с Safari 16.4. На
-  старых iOS это SyntaxError, и весь бандл падает в белый экран. Настраивай target сборки под
-  минимальную поддерживаемую iOS.
-- Режим блокировки (Lockdown Mode) отключает JIT и часть API. Если баг воспроизводится только у
-  одного пользователя и не повторяется у других, спроси, не включён ли этот режим.
-- Ссылки из мессенджеров открываются во встроенном браузере, где нет «На экран „Домой“».
-  Показывай подсказку «Откройте в Safari».
+- **iOS/iPadOS 26+: every site** added to the Home Screen opens as a web app by default, even
+  without a manifest (the user can turn off "Open as Web App"). Installed-PWA bugs (downloads, no
+  back button, separate storage) therefore affect ordinary sites too — test sites in this mode.
+- An installed PWA has its own storage, cookies and permissions. Since iOS 17.2 login cookies are
+  copied from Safari on install. Removing the icon deletes the app's data and push subscription.
+- Installing from other browsers: since iOS 16.4.
+- iOS 26+ User-Agent shows a frozen OS version (e.g. `OS 18_6`); only `Version/26.x` changes.
+  Never derive the iOS version from the UA — feature-detect: `'PushManager' in window`,
+  `CSS.supports(...)`, `MediaRecorder.isTypeSupported(...)`.
+- Every iPhone browser runs on WebKit (exceptions: EU and Japan, with conditions): Chrome on iOS
+  reproduces Safari bugs.
+- Build: regex lookbehind (`(?<=…)`) is supported only from Safari 16.4. On older iOS it is a
+  SyntaxError and the whole bundle fails with a white screen. Set the build target to the minimum
+  supported iOS.
+- Lockdown Mode disables JIT and some APIs. If a bug reproduces for exactly one user and nobody
+  else, ask whether Lockdown Mode is on.
+- Links from messengers open in an in-app browser without "Add to Home Screen". Show an
+  "Open in Safari" hint.
 
-## 🔎 Манифест и иконки
+## 🔎 Manifest and icons
 
-- iOS игнорирует в манифесте `orientation`, `background_color`, `share_target`,
-  `display_override` и maskable-иконки; `shortcuts` работают только на macOS; `minimal-ui` и
-  `fullscreen` откатываются к обычному режиму.
-- Иконки — квадратные PNG без прозрачности (прозрачные области станут чёрными); скругляет их
-  iOS. `apple-touch-icon` перекрывает иконки из манифеста. SVG-иконки (с iOS 26) — только в
-  манифесте.
-- Заставка `apple-touch-startup-image` работает только вместе с `apple-mobile-web-app-capable`.
+- iOS ignores `orientation`, `background_color`, `share_target`, `display_override` and maskable
+  icons; `shortcuts` work only on macOS; `minimal-ui` and `fullscreen` fall back to the default mode.
+- Icons: square PNGs without transparency (transparent areas turn black); iOS rounds the corners.
+  `apple-touch-icon` overrides manifest icons. SVG icons (iOS 26+) only via the manifest.
+- `apple-touch-startup-image` works only together with `apple-mobile-web-app-capable`.
 
-## 🔎 Хранилище и жизненный цикл
+## 🔎 Storage and lifecycle
 
-- Квота с iOS 17 — до ~60% диска на origin, у установленной PWA такая же. При переполнении —
-  `QuotaExceededError`. Главная копия данных всё равно должна быть на сервере.
-- Правило «стереть данные через 7 дней» действует в Safari; у установленной PWA свой счётчик
-  дней использования. Сессию храни в httpOnly-cookie, выставленной сервером, а не в cookie из JS.
-- iOS выгружает фоновую вкладку или приложение без события `unload`. Сохраняй черновики в
-  IndexedDB (с задержкой 300–500 мс после ввода и на `visibilitychange`/`pagehide`) и предлагай
-  восстановить их при следующем открытии.
-- Background Sync, Periodic Sync и Background Fetch нет. Отправку храни в очереди в IndexedDB и
-  отправляй при возвращении в приложение и событии `online`, с ключами идемпотентности.
-- Нет Vibration API, Web Bluetooth, WebNFC, WebUSB. Fullscreen API — только на iPad.
+- Quota since iOS 17: up to ~60% of disk per origin, same for an installed PWA. Overflow →
+  `QuotaExceededError`. The server must still hold the primary copy of data.
+- The 7-day wipe applies to Safari; an installed PWA has its own days-of-use counter. Keep the
+  session in a server-set httpOnly cookie, not a JS-written cookie.
+- iOS evicts background tabs/apps without `unload`. Save drafts to IndexedDB (300–500 ms after
+  input and on `visibilitychange`/`pagehide`) and offer to restore them on next open.
+- No Background Sync, Periodic Sync or Background Fetch. Queue outgoing requests in IndexedDB and
+  send them on return to the app and on `online`, with idempotency keys.
+- No Vibration API, Web Bluetooth, WebNFC, WebUSB. Fullscreen API on iPad only.

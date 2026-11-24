@@ -1,8 +1,8 @@
 /**
- * iOS 26, установленная PWA: fixed/sticky элементы могут рисоваться в координатах документа
- * при прокрутке корня (WebKit 301172 / 312149). Решение — сделать <body> единственным скроллером.
+ * iOS 26, installed PWA: fixed/sticky elements may be painted at document coordinates
+ * while the root scrolls (WebKit 301172 / 312149). Fix: make <body> the only scroller.
  *
- * CSS (в глобальные стили):
+ * CSS (global styles):
  *
  *   html.ios-app-scroll { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
  *   html.ios-app-scroll body {
@@ -10,11 +10,11 @@
  *     overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain;
  *   }
  *
- * Правила:
- *  - переключай класс ТОЛЬКО при смене роута, никогда на scroll/resize;
- *  - только для установленной PWA на iOS и роутов приложения (Safari-вкладка и Android скроллят документ);
- *  - везде используй хелперы ниже вместо window.scrollY / window.scrollTo;
- *  - НЕ заменяй на body { position: fixed } (обрезает длинный контент в iOS PWA).
+ * Rules:
+ *  - toggle the class ONLY on route change, never on scroll/resize;
+ *  - only for installed PWA on iOS and app routes (Safari tab and Android scroll the document);
+ *  - use the helpers below everywhere instead of window.scrollY / window.scrollTo;
+ *  - do NOT replace with body { position: fixed } (clips long content in iOS PWA).
  */
 import { isIosStandalonePwa } from './ios-detect'
 
@@ -35,7 +35,7 @@ export function setPageScrollTop(top: number) {
 	else window.scrollTo({ top, behavior: 'auto' })
 }
 
-/** Роутер сбрасывает скролл window, а не body: вызывай при входе на страницу, если нужно наверх. */
+/** Router resets window scroll, not body: call on page entry when the page must open at the top. */
 export function resetPageScrollOnEntry() {
 	setPageScrollTop(0)
 	requestAnimationFrame(() => {
@@ -44,7 +44,7 @@ export function resetPageScrollOnEntry() {
 	})
 }
 
-/** Подключи к роутеру: например router.afterEach(to => applyIosScrollMode(to.path)) */
+/** Wire into the router, e.g. router.afterEach(to => applyIosScrollMode(to.path)) */
 export function applyIosScrollMode(path: string, isAppRoute = (p: string) => p.startsWith('/app')) {
 	if (!isIosStandalonePwa()) return
 	document.documentElement.classList.toggle(IOS_APP_SCROLL_CLASS, isAppRoute(path))

@@ -1,56 +1,57 @@
-# История итераций: что пробовали и что НЕ сработало
+# Iteration history: what was tried and did NOT work
 
-Источник: реальная PWA в продакшене (Nuxt 3, Vue), май–ноябрь 2026. Здесь записаны «тупиковые» решения,
-чтобы не повторять их. Финальные решения описаны в SKILL.md.
+Source: a production PWA (Nuxt 3, Vue), May–November 2026. Read before proposing an approach to
+avoid repeating dead ends. Final solutions live in the topic files.
 
-## Нижнее меню
+## Bottom bar
 
-| Попытка | Результат |
+| Attempt | Result |
 |---|---|
-| Меню внутри layout/страницы | Скроллящийся предок становится containing block, меню уезжает → **перенос в body через Teleport** (работает, но этого мало) |
-| `contain: layout style` + `isolation: isolate` на меню | Дрейф при скролле → убрали |
-| `transform: translate3d(0,0,0)` + `backface-visibility: hidden` + `will-change: transform` («GPU-хак») | Меню отрывается от вьюпорта → убрали полностью |
-| Анимация скрытия при клавиатуре (`opacity`/`translate 130%`) по `focusin/focusout` | Мигание при фокусе инпута → убрали JS; transition на меню запрещён |
-| Пересчёт высоты меню на `visualViewport.resize` | Дёрганье при показе/скрытии панелей Safari → только ResizeObserver на самом меню |
-| Всё выше учтено, но iOS 26 | Меню рисуется посередине экрана (WebKit 301172/312149), хотя CSS-позиция верная → **body-скроллер только в установленной PWA на iOS** |
-| Альтернатива: `body { position: fixed }` | Обрезает длинный контент → отвергнуто |
+| Bar inside layout/page | Scrolling ancestor becomes containing block, bar drifts → **teleport to body** (works, not sufficient) |
+| `contain: layout style` + `isolation: isolate` on the bar | Drift while scrolling → removed |
+| `transform: translate3d(0,0,0)` + `backface-visibility: hidden` + `will-change: transform` ("GPU hack") | Bar detaches from the viewport → removed entirely |
+| Hide-on-keyboard animation (`opacity`/`translate 130%`) via `focusin/focusout` | Flicker on input focus → JS removed; transitions on the bar forbidden |
+| Recompute bar height on `visualViewport.resize` | Jitter as Safari bars show/hide → ResizeObserver on the bar only |
+| All of the above, but iOS 26 | Bar painted mid-screen (WebKit 301172/312149) despite correct CSS position → **body scroller, installed PWA on iOS only** |
+| Alternative: `body { position: fixed }` | Clips long content → rejected |
 
-## Скачивание видео на iPhone (≈10 итераций, порядок примерный — некоторые варианты возвращались)
+## Video download on iPhone (~10 iterations; order approximate, some variants returned)
 
-1. `fetch` → blob → `<a download>` — в установленной PWA ничего не происходит.
-2. `navigator.share({ files: [video] })` — работает на маленьких, на больших падает (память).
-3. Подписанный тикет + `location.assign` на API того же origin — открывается внутри PWA, нет выхода.
-4. Тикет + ссылка на **другой поддомен** с `target=_blank` — лучше, но нестабильно.
-5. Отдавать как `application/octet-stream` — iOS не понимает, что это видео.
-6. Отдавать видео, упакованное в **ZIP** (stream, store) — работает, но пользователю неудобно (распаковывать).
-7. ZIP только для iOS по User-Agent — то же неудобство.
-8. **Финал:** тикет (JWT, короткий TTL) → `window.location.href = https://media.<домен>/download-ticket/<jwt>`
-   → `Content-Type: video/mp4` (реальный тип, а не octet-stream) + `Content-Disposition: attachment` с UTF-8 именем.
+1. `fetch` → blob → `<a download>` — nothing happens in an installed PWA.
+2. `navigator.share({ files: [video] })` — works for small files, crashes on large ones (memory).
+3. Signed ticket + `location.assign` to a same-origin API — opens inside the PWA, no way out.
+4. Ticket + link to **another subdomain** with `target=_blank` — better, but unstable.
+5. Serve as `application/octet-stream` — iOS does not recognize it as video.
+6. Serve the video inside a **ZIP** (stream, store) — works, but users must unpack it.
+7. ZIP only for iOS by User-Agent — same inconvenience.
+8. **Final:** ticket (JWT, short TTL) → `window.location.href = https://media.<domain>/download-ticket/<jwt>`
+   → `Content-Type: video/mp4` (real type, not octet-stream) + `Content-Disposition: attachment` with a UTF-8 name.
 
-## PDF на iPhone
+## PDF on iPhone
 
-1. Свой просмотрщик внутри PWA (fetch + рендер) — тормозит, нельзя сохранить.
-2. Открыть URL нативно (`window.open`) для просмотра — ок для просмотра.
-3. Скачивание через blob + `window.open(blob)` после `await` — блокируется попап-блокером.
-4. **Финал:** окно резервируется синхронно (`window.open('about:blank')`) до `fetch`,
-   после — `reserved.location.href = blobUrl`; при ошибке окно закрывается.
+1. Custom in-app viewer (fetch + render) — slow, cannot save.
+2. Open the URL natively (`window.open`) for viewing — fine for viewing.
+3. Download via blob + `window.open(blob)` after `await` — blocked by the popup blocker.
+4. **Final:** reserve the window synchronously (`window.open('about:blank')`) before `fetch`,
+   then `reserved.location.href = blobUrl`; close the window on error.
 
-## Аудио
+## Audio
 
-1. Хранили как пришло (Telegram OGG/Opus) — на iPhone не играет.
-2. **Финал:** конвертация в MP3 на сервере при загрузке + миграция старых файлов скриптом;
-   при ошибке конвертации — отклонять загрузку. На клиенте: понятные ошибки
-   (`NotSupportedError`/`NotAllowedError`), однократный refresh протухшего presigned URL.
+1. Stored as received (Telegram OGG/Opus) — does not play on iPhone.
+2. **Final:** server-side MP3 transcoding on upload + migration script for old files; reject the
+   upload if transcoding fails. Client: explicit errors (`NotSupportedError`/`NotAllowedError`),
+   one refresh of an expired presigned URL.
 
-## Service worker / обновления
+## Service worker / updates
 
-1. Баннер «доступно обновление» — ложные срабатывания у всех с чистым хранилищем
-   (iOS чистит), потому что закреплённый на прокси `registerSW.js` нёс старый release id.
-2. `unregister()` всех SW при восстановлении — терялась push-подписка → заменили на `update()` + `SKIP_WAITING`.
-3. **Финал:** тихое применение релиза (сразу после открытия / при уходе в фон / на следующей навигации),
-   никогда не дважды подряд; legacy-синтаксис в скрипте регистрации.
+1. "Update available" banner — false positives for everyone with empty storage (iOS clears it),
+   because a `registerSW.js` pinned on the proxy carried a stale release id.
+2. `unregister()` of all SWs during recovery — lost the push subscription → replaced with
+   `update()` + `SKIP_WAITING`.
+3. **Final:** silent release activation (right after launch / on background / on next navigation),
+   never twice in a row; legacy syntax in the registration script.
 
-## Сеть
+## Network
 
-- HTTP/3 (QUIC): на некоторых iOS-путях запросы ассетов падали, не доходя до логов сервера →
-  на прокси оставили только `h1 h2`.
+- HTTP/3 (QUIC): on some iOS paths asset requests failed without reaching server logs → proxy
+  limited to `h1 h2`.

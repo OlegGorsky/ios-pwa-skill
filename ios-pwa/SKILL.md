@@ -1,124 +1,132 @@
 ---
 name: ios-pwa
-description: Проверенные правила и готовые решения, чтобы PWA и мобильные сайты сразу работали на iPhone и iPad (iOS Safari, WebKit, сайт с экрана «Домой») — нижнее меню и fixed-элементы, прокрутка, модалки, клавиатура, safe area, аудио и голосовые, видео, скачивание файлов, service worker и обновления, push, хранилище. Используй при вёрстке, ревью и отладке мобильного фронта, даже если пользователь не говорит «iOS», например «меню прыгает на айфоне», «голосовые не играют в Safari», «файл не скачивается на iPhone», «белый экран после обновления», «на Android работает, а на iPhone нет». Use when building, reviewing or debugging a PWA or mobile website that must work in iOS Safari or as a Home Screen web app. Do NOT use for native iOS apps (Swift, SwiftUI, React Native, Flutter) or desktop-only layouts.
+description: >-
+  Proven rules and ready-made fixes that make PWAs and mobile websites work on iPhone and iPad
+  (iOS Safari, WebKit, Home Screen web apps) — bottom tab bar and fixed elements, scrolling,
+  modals, keyboard, safe area, audio and voice messages, video, file downloads, service worker
+  and updates, push, storage. Use when building, reviewing or debugging a mobile front end that
+  may be opened on an iPhone, even if the user never says "iOS" — e.g. "the menu jumps on
+  iPhone", "voice messages don't play in Safari", "download doesn't work on iPhone", "white
+  screen after deploy", "works on Android but not on iPhone" (also in Russian: «меню прыгает на
+  айфоне», «голосовые не играют», «на айфоне не работает»). Do NOT use for native iOS apps
+  (Swift, SwiftUI, React Native, Flutter) or desktop-only layouts.
 ---
 
-# iOS PWA: правила, которые экономят итерации на iPhone
+# iOS PWA
 
-Каждое правило здесь — баг, который уже стоил нескольких попыток на реальном проекте, или
-подтверждённое поведение WebKit из документации и баг-трекера. Цель — заложить правильное
-решение с первого раза, потому что живой iPhone под рукой бывает не всегда.
+Every rule below is either a bug that already cost several iterations on a production PWA or
+documented WebKit behavior. Goal: ship the correct solution on the first try, because a real
+iPhone is often unavailable for testing.
 
-## Термины (один термин — одно понятие)
+## Terms (one term per concept)
 
-- **установленная PWA** — сайт, запущенный с экрана «Домой» (в коде — `display-mode: standalone`,
-  `navigator.standalone`). Не путай с Safari-вкладкой: многие баги есть только здесь.
-- **Safari-вкладка** — тот же сайт в обычном Safari или другом браузере на iPhone.
-- **нижнее меню** — fixed-панель вкладок внизу экрана.
-- **iOS** — iOS и iPadOS вместе.
-- 🔎 — сведения из открытых источников (релиз-ноты Safari, блог и баг-трекер WebKit,
-  справочник firt.dev), не проверенные на исходном проекте. Проверяй их на устройстве.
+- **installed PWA** — site launched from the Home Screen (`display-mode: standalone`,
+  `navigator.standalone`). Many bugs exist only here.
+- **Safari tab** — the same site in Safari or any other iPhone browser.
+- **bottom bar** — fixed tab bar at the bottom of the screen.
+- **iOS** — iOS and iPadOS.
+- 🔎 — from public sources (Safari release notes, WebKit blog and bug tracker, firt.dev), not
+  verified on the source project. Verify on a device.
 
-## Перед началом работы
+## Pre-flight
 
-Выясни из кода и задачи (если не получается — спроси пользователя один раз):
-1. Минимальная поддерживаемая версия iOS. Если неизвестна — считай, что iOS 16.4: от неё
-   зависят push, синтаксис сборки и форматы медиа.
-2. Используется ли сайт как установленная PWA. С iOS 26 любой сайт с экрана «Домой»
-   открывается в этом режиме, поэтому по умолчанию считай, что да.
-3. Фреймворк и где рендерятся fixed-элементы (портал или телепорт в `body` есть?).
-4. Как сервер отдаёт медиа и файлы (Range-запросы, `Content-Type`, отдельный домен).
+Determine from the code and task; if impossible, ask the user once:
+1. Minimum supported iOS version. Unknown → assume iOS 16.4 (push, build syntax and media
+   formats depend on it).
+2. Whether the site runs as an installed PWA. Since iOS 26 every Home Screen site does → default yes.
+3. Framework, and whether fixed elements render through a portal/teleport into `body`.
+4. How the server serves media and files (Range requests, `Content-Type`, separate domain).
 
-## Главные принципы
+## Core principles
 
-- Различай три среды: Safari-вкладка, установленная PWA, Android/десктоп. Определение iOS:
-  `/iPhone|iPad|iPod/` или (`Macintosh` и `maxTouchPoints > 1`) — iPadOS представляется Mac'ом.
-  Установленная PWA: `navigator.standalone === true || matchMedia('(display-mode: standalone)').matches`.
-  Готовый код — `snippets/ios-detect.ts`.
-- 🔎 Версию iOS не бери из User-Agent: в iOS 26 и новее она там заморожена. Проверяй
-  возможности (`'PushManager' in window`, `CSS.supports(...)`).
-- Включай iOS-обходы точечно — классом на `<html>` только для iOS и только на нужных роутах.
-  Глобальный обход ломает Android и десктоп.
-- Не исправляй вёрстку JS-обработчиками `scroll`/`resize`: на iOS это даёт дрожание и мигание.
-  Переключай режимы только при смене роута или открытии модалки.
-- Каждый iOS-фикс закрепляй регрессионным тестом и комментарием «почему так» со ссылкой на
-  баг WebKit — иначе следующий рефакторинг вернёт баг. Примеры тестов — `references/regression-tests.md`.
+- Distinguish three environments: Safari tab, installed PWA, Android/desktop.
+  iOS = `/iPhone|iPad|iPod/` or (`Macintosh` and `maxTouchPoints > 1`) — iPadOS reports as Mac.
+  Installed PWA = `navigator.standalone === true || matchMedia('(display-mode: standalone)').matches`.
+  Code: `snippets/ios-detect.ts`.
+- 🔎 Never read the iOS version from the User-Agent: on iOS 26+ it is frozen. Feature-detect
+  (`'PushManager' in window`, `CSS.supports(...)`).
+- Scope iOS workarounds: a class on `<html>`, only for iOS, only on the routes that need it.
+  Global workarounds break Android and desktop.
+- Never fix layout with `scroll`/`resize` JS handlers: on iOS this causes jitter and flicker.
+  Switch modes only on route change or modal open/close.
+- Lock every iOS fix with a regression test and a "why" comment linking the WebKit bug, or the
+  next refactor brings the bug back. Examples: `references/regression-tests.md`.
 
-## Карта: что читать под задачу
+## Map: what to read
 
-Читай только файл под свою задачу; остальные не загружай.
+Read only the file for the current task; do not load the others.
 
-| Задача | Читай | Не нужно |
+| Task | Read | Skip |
 |---|---|---|
-| Нижнее меню, fixed/sticky, прокрутка, модалки, клавиатура, safe area, поля ввода | `references/layout.md` | media, downloads |
-| `<audio>`, `<video>`, голосовые, запись, Web Audio, загрузка медиа на сервер | `references/media.md` | layout |
-| Кнопка «Скачать», сохранение видео/картинок/PDF, ссылки наружу | `references/downloads.md` | media |
-| Service worker, деплой, белый экран после релиза, push | `references/updates-and-push.md` | layout |
-| Манифест, иконки, установка, сессии, хранилище, офлайн, определение устройства | `references/platform.md` | media |
-| Нужен источник для пункта 🔎 или место, где следить за новыми версиями iOS | `references/research-2026.md` | — |
-| Хочешь понять, какие решения уже пробовали и почему они не сработали | `references/iteration-history.md` | — |
+| Bottom bar, fixed/sticky, scrolling, modals, keyboard, safe area, inputs | `references/layout.md` | media, downloads |
+| `<audio>`, `<video>`, voice messages, recording, Web Audio, media upload | `references/media.md` | layout |
+| Download button, saving video/images/PDF, outbound links | `references/downloads.md` | media |
+| Service worker, deploys, white screen after release, push | `references/updates-and-push.md` | layout |
+| Manifest, icons, install, sessions, storage, offline, device detection | `references/platform.md` | media |
+| Source for a 🔎 item, or where to track new iOS releases | `references/research-2026.md` | — |
+| Which approaches were already tried and failed | `references/iteration-history.md` | — |
 
-Готовый код — в `snippets/`: определение iOS, прокрутка body, блокировка прокрутки, высота
-под клавиатуру, скачивание, восстановление после ошибки чанка, команды ffmpeg.
+Ready code in `snippets/`: iOS detection, body scroller, scroll lock, keyboard-aware height,
+downloads, chunk-error recovery, ffmpeg commands.
 
-## Самые дорогие ошибки (держи в голове всегда)
+## Most expensive mistakes (always apply)
 
-- **Нижнее меню** рендери прямым ребёнком `<body>` и не вешай на него `transform`,
-  `will-change`, `contain`, `backdrop-filter` и анимации: любое из них ломает `position: fixed`
-  на iOS. В установленной PWA на iOS 26 прокручиваться должен `body`, а не документ. → `layout.md` §1
-- **Модалки** блокируй через `overflow: hidden` на `html` и `body`, без `body { position: fixed }`:
-  иначе меню уезжает, а страница может «замёрзнуть». → `layout.md` §2
-- **Клавиатура** не уменьшает `dvh` на iOS: высоту экрана с полем ввода бери из `visualViewport`. → `layout.md` §4
-- **Аудио** храни в MP3 или AAC и конвертируй OGG/Opus/WebM на сервере при загрузке; сервер
-  обязан поддерживать Range-запросы. → `media.md`
-- **Скачивание** в установленной PWA через обычную ссылку запирает пользователя на экране без
-  навигации. Видео — через подписанный тикет на другой домен, картинки — через «Поделиться». → `downloads.md`
-- **Релиз** без стратегии обновлений даёт белый экран у пользователей со старым HTML: нужна
-  одна защищённая перезагрузка при ошибке чанка и тихое применение релиза. → `updates-and-push.md`
-- **Push** на iOS только в установленной PWA; каждый push обязан показать уведомление, иначе
-  после трёх «тихих» Safari удаляет подписку. → `updates-and-push.md`
+- **Bottom bar**: render as a direct child of `<body>`; no `transform`, `will-change`, `contain`,
+  `backdrop-filter` or animations on it — each breaks `position: fixed` on iOS. In an installed
+  PWA on iOS 26, `body` must be the scroller, not the document. → `layout.md` §1
+- **Modals**: lock scroll with `overflow: hidden` on `html` and `body`, never
+  `body { position: fixed }` — it moves the bottom bar and can freeze the page. → `layout.md` §2
+- **Keyboard**: does not shrink `dvh` on iOS; size input screens from `visualViewport`. → `layout.md` §4
+- **Audio**: store MP3 or AAC; transcode OGG/Opus/WebM server-side on upload; the server must
+  support Range requests. → `media.md`
+- **Downloads**: a plain download link in an installed PWA traps the user on a screen with no
+  navigation. Video → signed ticket on another domain; images → Share sheet. → `downloads.md`
+- **Releases**: without an update strategy, users with stale HTML get a white screen. Add one
+  guarded reload on chunk errors and silent release activation. → `updates-and-push.md`
+- **Push**: iOS supports it only in an installed PWA; every push must show a notification or
+  Safari drops the subscription after three silent ones. → `updates-and-push.md`
 
-## Симптом → где искать
+## Symptom → where to look
 
-| Симптом на iPhone | Файл и раздел |
+| Symptom on iPhone | File / section |
 |---|---|
-| Нижнее меню скачет, уезжает, висит посреди экрана | `layout.md` §1 |
-| 🔎 Меню висит посреди экрана после закрытия клавиатуры (iOS 26) | `layout.md` §1, Liquid Glass |
-| Страница открывается не сверху после перехода | `layout.md` §1, прокрутка body |
-| После закрытия модалки прокрутка сломана или меню уехало | `layout.md` §2 |
-| Мигание при прокрутке или фокусе | `layout.md` §3 (`backdrop-filter`, якорь подгрузки), §4 (`focusin`) |
-| Поле ввода спрятано клавиатурой | `layout.md` §4 |
-| Страница увеличивается при фокусе на поле | `layout.md` §4, автозум |
-| 🔎 Цвет панелей Safari не тот, `theme-color` не работает (iOS 26) | `layout.md` §1, Liquid Glass |
-| Голосовое или аудио не играет | `media.md`: формат, Range, `Content-Type`, жест |
-| 🔎 Web Audio не слышно, а `<audio>` играет | `media.md`: переключатель «Бесшумно» |
-| Видео не играет, долго стартует, открывается на весь экран | `media.md`: faststart, `playsinline`, H.264 |
-| 🔎 Видео-фон не запускается у части пользователей | `media.md`: режим энергосбережения |
-| «Скачать» ничего не делает или открывает файл без выхода | `downloads.md` |
-| После деплоя белый экран или ошибка модуля | `updates-and-push.md`: чанки, синтаксис |
-| 🔎 Белый экран только на старых iOS | `platform.md`: синтаксис сборки |
-| Push пропадают через время | `updates-and-push.md`: переподписка, «тихие» push |
-| 🔎 Определение версии iOS ошибается на iOS 26 | `platform.md`: User-Agent |
-| Пользователь «разлогинился» после установки на экран «Домой» | `platform.md`: отдельное хранилище |
+| Bottom bar jumps, drifts, floats mid-screen | `layout.md` §1 |
+| 🔎 Bottom bar stuck mid-screen after keyboard closes (iOS 26) | `layout.md` §1, Liquid Glass |
+| Page opens scrolled down after navigation | `layout.md` §1, body scroller |
+| Scroll broken or bar moved after closing a modal | `layout.md` §2 |
+| Flicker on scroll or focus | `layout.md` §3 (`backdrop-filter`, load anchor), §4 (`focusin`) |
+| Input hidden by keyboard | `layout.md` §4 |
+| Page zooms in on input focus | `layout.md` §4, auto-zoom |
+| 🔎 Safari bar color wrong, `theme-color` ignored (iOS 26) | `layout.md` §1, Liquid Glass |
+| Voice/audio does not play | `media.md`: format, Range, `Content-Type`, gesture |
+| 🔎 Web Audio silent while `<audio>` plays | `media.md`: silent switch |
+| Video won't play, starts slowly, opens fullscreen | `media.md`: faststart, `playsinline`, H.264 |
+| 🔎 Background video doesn't autoplay for some users | `media.md`: Low Power Mode |
+| "Download" does nothing or opens the file with no way back | `downloads.md` |
+| White screen or module error after deploy | `updates-and-push.md`: chunks, syntax |
+| 🔎 White screen only on old iOS | `platform.md`: build syntax |
+| Push stops arriving over time | `updates-and-push.md`: resubscribe, silent pushes |
+| 🔎 iOS version detection wrong on iOS 26 | `platform.md`: User-Agent |
+| User "logged out" after adding to Home Screen | `platform.md`: separate storage |
 
-## Проверка без iPhone
+## Verification without an iPhone
 
-После изменений выдай пользователю этот план проверки:
-1. Автоматически: регрессионные тесты на CSS-инварианты (нет `transform` и анимаций на нижнем
-   меню, есть `playsinline`, API не отдаёт OGG) и Playwright с движком WebKit как первый фильтр.
-   iOS-специфику safe area, панелей Safari и скачивания Playwright не воспроизводит.
-2. Диагностика в продакшене: при прокрутке и `resize` записывай `visualViewport` (height,
-   offsetTop, scale), реальный скроллер, `scrollTop`, расстояние нижнего меню от низа экрана;
-   ошибки медиа, скачивания и чанков — вместе с User-Agent. Так баг виден из логов без устройства.
-3. Ручной сценарий для человека с iPhone: установить сайт на экран «Домой» → длинная лента,
-   инерционная прокрутка в обе стороны со сменой направления → все вкладки нижнего меню →
-   открыть и закрыть клавиатуру → открыть и закрыть модалку → голосовое → скачать видео,
-   картинку, PDF → свернуть и развернуть приложение. Повторить в Safari-вкладке и на Android.
-4. Реальные устройства в облаке (BrowserStack, LambdaTest) или подержанный iPhone со старой iOS.
+After changes, give the user this plan (in the user's language):
+1. Automated: regression tests on CSS invariants (no `transform`/animation on the bottom bar,
+   `playsinline` present, API never serves OGG) plus Playwright WebKit as a first filter. It does
+   not reproduce safe area, Safari bars or downloads.
+2. Production diagnostics: on scroll and `resize` log `visualViewport` (height, offsetTop, scale),
+   the actual scroller, `scrollTop`, bottom-bar distance from the viewport bottom; log media,
+   download and chunk errors with the User-Agent. Bugs become visible without a device.
+3. Manual script for someone with an iPhone: add to Home Screen → long feed, momentum scroll
+   both ways with direction changes → every bottom-bar tab → open/close keyboard → open/close a
+   modal → play a voice message → download video, image, PDF → background and reopen the app.
+   Repeat in a Safari tab and on Android.
+4. Cloud real devices (BrowserStack, LambdaTest) or a used iPhone on an old iOS.
 
-## Как пополнять
+## Extending
 
-Новый случай — строка в таблице «Симптом → где искать» и правило в нужном файле `references/`
-в формате «что делать — почему — ссылка на баг WebKit или коммит». Правила без 🔎 — только
-проверенные на реальном устройстве. Найденное в документации — с 🔎 и источником в
-`references/research-2026.md`; когда пункт подтвердится на проекте, убери 🔎.
+New case → row in "Symptom → where to look" + rule in the matching `references/` file as
+"do — why — WebKit bug or commit link". Rules without 🔎 must be verified on a real device.
+Findings from docs → mark 🔎 and add the source to `references/research-2026.md`; remove 🔎
+once verified in a project.

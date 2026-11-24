@@ -1,8 +1,8 @@
 /**
- * Держит экран чата/поле ввода над клавиатурой iOS. 100dvh НЕ уменьшается под клавиатуру
- * на iOS, а visualViewport — да. Пишет --vv-height в контейнер.
- * Если контейнер внутри скроллящегося <main>, сначала перенеси его в <body>:
- * iOS позиционирует его position:fixed-детей относительно этого <main>.
+ * Keep a chat/composer screen above the iOS keyboard. 100dvh does NOT shrink for the
+ * keyboard on iOS; visualViewport does. Sets --vv-height on the container.
+ * If the container lives inside a scrolling <main>, move it to <body> first:
+ * iOS lays out its position:fixed children relative to that <main>.
  */
 export function bindVisualViewportHeight(container: HTMLElement, minHeight = 160) {
 	let frame = 0

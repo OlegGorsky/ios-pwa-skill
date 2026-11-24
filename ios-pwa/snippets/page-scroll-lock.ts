@@ -1,7 +1,7 @@
 /**
- * Блокировка скролла под модалками с учётом владельцев. Намеренно БЕЗ body { position: fixed; top: -y }:
- * на iOS это меняет поведение fixed-потомков (нижнее меню уезжает) и может «заморозить»
- * страницу, если анимация закрытия модалки гонится со снятием блокировки.
+ * Modal scroll lock with owners. Deliberately NOT body { position: fixed; top: -y }:
+ * on iOS that changes fixed descendants (the bottom bar moves) and can freeze the page
+ * when a modal close transition races the unlock.
  */
 const owners = new Map<unknown, string>()
 let saved: { html: string; body: string } | null = null

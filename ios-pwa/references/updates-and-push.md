@@ -1,74 +1,68 @@
-# Service worker, обновления, загрузка чанков, push
+# Service worker, updates, chunk loading, push
 
-Читай этот файл, когда трогаешь service worker, деплой и релизы, обработку ошибок загрузки
-модулей или push-уведомления. Пункты с 🔎 — из открытых источников, не проверены на исходном
-проекте (ссылки — в `research-2026.md`).
+Read when touching the service worker, deploys and releases, module-loading error handling, or
+push notifications. 🔎 = public sources, not verified on the source project (links in
+`research-2026.md`).
 
-## Релизы и обновления
+## Releases and updates
 
-iOS долго держит старый service worker и HTML, поэтому нужна явная стратегия релизов:
-- эндпоинт `/release.json` с `Cache-Control: no-store` и id релиза; id вшивается в ассеты при
-  сборке;
-- проверка нового релиза на `visibilitychange` (страница стала видимой), `focus`, `online` и
-  каждые 30–60 секунд, пока приложение открыто;
-- новый релиз применяется незаметно: сразу после открытия (до первого касания), при уходе
-  приложения в фон или полной загрузкой на следующем переходе. Активного пользователя не
-  перезагружай; для одного релиза — не больше одной перезагрузки;
-- при первом визите сохраняй id, который вернул сервер. Почему: иначе у всех с чистым
-  хранилищем (а iOS его чистит) появляется ложный баннер «доступно обновление».
+iOS keeps stale service workers and HTML for a long time, so use an explicit release strategy:
+- `/release.json` endpoint with `Cache-Control: no-store` returning the release id; bake the id
+  into assets at build time;
+- check for a new release on `visibilitychange` (page visible), `focus`, `online`, and every
+  30–60 seconds while the app is open;
+- activate a new release silently: right after launch (before the first tap), when the app goes
+  to background, or as a full load on the next navigation. Never reload an active user; at most
+  one reload per release;
+- on first visit store the id returned by the server. Why: otherwise everyone with empty storage
+  (iOS clears it) sees a false "update available" banner.
 
-Дополнительно:
-- Используй `registration.update()` + `postMessage({ type: 'SKIP_WAITING' })` вместо
-  `unregister()`: `unregister()` теряет push-подписку.
-- Держи старые хешированные чанки на сервере после релиза: клиенты со старым HTML будут их
-  запрашивать.
-- Скрипт регистрации service worker пиши на старом синтаксисе (без `?.`, `??`, `1_000`): он
-  выполняется на самых старых устройствах до любых полифилов.
-- Nuxt: `experimental.entryImportMap: false` — import maps ломали старый Safari.
-- HTTP/3 (QUIC) на части путей в iOS молча теряет запросы (они не доходят до логов сервера).
-  Пока это не проверено на твоей инфраструктуре, оставь на прокси только `h1 h2`
-  (Caddy: `servers { protocols h1 h2 }`).
+Also:
+- Use `registration.update()` + `postMessage({ type: 'SKIP_WAITING' })`, not `unregister()`:
+  `unregister()` loses the push subscription.
+- Keep old hashed chunks on the server after a release: clients with stale HTML still request them.
+- Write the service-worker registration script in legacy syntax (no `?.`, `??`, `1_000`): it runs
+  on the oldest devices before any polyfills.
+- Nuxt: `experimental.entryImportMap: false` — import maps broke old Safari.
+- HTTP/3 (QUIC) silently drops requests on some iOS paths (they never reach server logs). Until
+  verified on your infrastructure, allow only `h1 h2` on the proxy (Caddy: `servers { protocols h1 h2 }`).
 
-## Ошибки загрузки чанков после деплоя
+## Chunk-loading errors after deploy
 
-Это нормальная ситуация на iOS. Лови ошибку и делай одну перезагрузку, защитившись от повтора
-записью в storage на 5 минут. Признаки:
+Normal on iOS. Catch the error and reload once, guarded by a storage flag for 5 minutes. Signals:
 - `Failed to fetch dynamically imported module`;
 - `Importing a module script failed` (Safari);
 - `Unable to preload CSS`;
-- Safari-специфичное `undefined is not an object (evaluating 'x.default')` — считай его ошибкой
-  чанка, только если за последние 15 секунд была реальная ошибка загрузки ассета. Почему: эта же
-  ошибка бывает настоящим багом, и безусловная перезагрузка его спрячет.
+- Safari-specific `undefined is not an object (evaluating 'x.default')` — treat as a chunk error
+  only if a real asset-load error occurred in the last 15 seconds. Why: the same message can be a
+  real bug, and an unconditional reload would hide it.
 
-Готовый код — `../snippets/chunk-recovery.ts`.
+Code: `../snippets/chunk-recovery.ts`.
 
-## Push-уведомления
+## Push notifications
 
-- На iOS push работает только в установленной PWA и с iOS 16.4. В Safari-вкладке показывай
-  инструкцию «Поделиться → На экран „Домой“», а не кнопку, которая ничего не сделает.
-  Причину недоступности возвращай явно: `ios_install_required`, `ios_update_required`,
-  `permission_denied`, `unsupported`. 🔎 На iOS 26 версия ОС в User-Agent заморожена, поэтому
-  `ios_update_required` определяй по наличию `PushManager`, а не по версии из User-Agent.
-- `navigator.serviceWorker.ready` и `Notification.requestPermission()` могут не завершиться
-  никогда. Оборачивай каждый шаг в таймаут 10 секунд, а весь процесс включения — в общий
-  20-секундный таймер, и записывай в лог шаг, на котором всё зависло.
-- Окно «Включите уведомления» всегда должно иметь кнопку закрытия: если включить невозможно,
-  пользователь иначе заперт. Во время подписки показывай индикатор и текст.
-- iOS сбрасывает подписку. Храни `deviceId` и признак «пользователь включил уведомления» в
-  localStorage; при каждом старте, если признак есть, а подписки нет, — переподпишись без
-  вопросов.
-- На сервере выполняй параллельные запросы подписки для одной пары «пользователь + устройство»
-  по очереди: гонка даёт ошибку уникальности и ответ 500.
-- По клику на уведомление фокусируй уже открытое окно приложения, а URL приводи к своему origin.
+- iOS push works only in an installed PWA, from iOS 16.4. In a Safari tab show the instruction
+  "Share → Add to Home Screen" instead of a button that does nothing. Return the reason
+  explicitly: `ios_install_required`, `ios_update_required`, `permission_denied`, `unsupported`.
+  🔎 On iOS 26 the OS version in the User-Agent is frozen → decide `ios_update_required` by the
+  presence of `PushManager`, not by the UA version.
+- `navigator.serviceWorker.ready` and `Notification.requestPermission()` may never settle. Wrap
+  each step in a 10-second timeout and the whole enable flow in a 20-second watchdog; log the step
+  that hung.
+- The "Enable notifications" dialog must always have a close button; otherwise a user who cannot
+  enable push is trapped. Show a spinner and text while subscribing.
+- iOS drops subscriptions. Store `deviceId` and an "enabled" flag in localStorage; on every launch,
+  if the flag is set and there is no subscription, resubscribe silently.
+- Server-side, serialize concurrent subscribe requests per user + device: the race causes a
+  unique-constraint error and a 500.
+- On notification click, focus the already open app window and normalize the URL to your origin.
 
-### 🔎 Из открытых источников
+### 🔎 From public sources
 
-- Каждый push обязан показать уведомление внутри `event.waitUntil(showNotification(...))`.
-  После трёх «тихих» push (уведомление не показано, показано с задержкой или промис отклонён)
-  Safari удаляет подписку. Не пропускай показ уведомления, даже если пользователь сейчас в
-  приложении.
-- Событие `pushsubscriptionchange` не поддерживается, и подписка может тихо перестать работать,
-  хотя push-сервис отвечает 200. Поэтому проверка подписки при каждом старте (см. выше)
-  обязательна.
-- С iOS 18.4 есть Declarative Web Push — уведомления без service worker.
-- `navigator.setAppBadge` (значок с числом на иконке) работает только в установленной PWA, с 16.4.
+- Every push must show a notification inside `event.waitUntil(showNotification(...))`. After three
+  silent pushes (not shown, shown late, or rejected promise) Safari removes the subscription. Never
+  skip the notification, even if the user is currently in the app.
+- `pushsubscriptionchange` is not supported, and a subscription can silently stop working while
+  the push service still returns 200. The launch-time subscription check above is mandatory.
+- Since iOS 18.4: Declarative Web Push — notifications without a service worker.
+- `navigator.setAppBadge` (icon badge) works only in an installed PWA, from 16.4.

@@ -1,53 +1,49 @@
-# Аудио, голосовые и видео
+# Audio, voice messages, video
 
-Читай этот файл, когда в задаче есть `<audio>`, `<video>`, голосовые сообщения, запись с
-микрофона или камеры, Web Audio, мини-плеер или загрузка медиа на сервер. Пункты с 🔎 — из
-открытых источников, не проверены на исходном проекте (ссылки — в `research-2026.md`).
+Read when the task involves `<audio>`, `<video>`, voice messages, mic/camera recording, Web Audio,
+a mini-player, or media upload. 🔎 = public sources, not verified on the source project (links in
+`research-2026.md`).
 
-## Форматы и сервер
+## Formats and server
 
-- Храни и отдавай только форматы, которые играют на всех поддерживаемых iOS: MP3
-  (`audio/mpeg`) или AAC/M4A. OGG, Opus и WebM конвертируй на сервере при загрузке, а не на
-  клиенте. Если конвертация упала — отклони загрузку: неиграбельный файл потом всплывёт у
-  пользователя iPhone. Для уже сохранённых файлов нужен разовый скрипт миграции.
-  Команды ffmpeg — `../snippets/media-convert.sh`.
-- Голосовые из Telegram и WhatsApp, а также запись `MediaRecorder` в Chrome и на Android дают
-  OGG/Opus/WebM — ровно тот случай, когда конвертация обязательна.
-- Сервер или хранилище должны поддерживать Range-запросы (ответ 206) и отдавать правильный
-  `Content-Type`. Без этого Safari не играет файл или не даёт перематывать. S3, MinIO и Garage
-  это умеют; собственный эндпоинт отдачи файлов проверь отдельно.
-- MP4 должен быть faststart (атом `moov` в начале файла), иначе видео долго стартует или не
-  играет по сети. Не-MP4 (WebM и т.п.) и HEVC перекодируй в H.264 + AAC с `yuv420p`.
-- 🔎 Даже если новые версии iOS играют Opus и WebM, старые — нет, поэтому серверная
-  конвертация остаётся обязательной.
+- Store and serve only formats every supported iOS plays: MP3 (`audio/mpeg`) or AAC/M4A.
+  Transcode OGG, Opus and WebM server-side on upload, not on the client. If transcoding fails,
+  reject the upload — an unplayable file will surface later on an iPhone. Migrate existing files
+  with a one-off script. ffmpeg commands: `../snippets/media-convert.sh`.
+- Telegram/WhatsApp voice messages and `MediaRecorder` output from Chrome and Android are
+  OGG/Opus/WebM — transcoding is mandatory for them.
+- The server or storage must support Range requests (206) and send the correct `Content-Type`;
+  otherwise Safari won't play or seek. S3, MinIO and Garage do; verify any custom file endpoint.
+- MP4 must be faststart (`moov` atom first), otherwise video starts slowly or not at all over the
+  network. Transcode non-MP4 (WebM etc.) and HEVC to H.264 + AAC with `yuv420p`.
+- 🔎 Even though newer iOS plays Opus and WebM, older versions do not — keep server-side transcoding.
 
-## Воспроизведение
+## Playback
 
-- `play()` вызывай только из пользовательского жеста и обрабатывай промис:
-  - `NotAllowedError` → покажи «Нажмите воспроизведение ещё раз»;
-  - `NotSupportedError` → покажи «Формат не поддерживается на этом устройстве».
-  Показывай ошибку в интерфейсе, не глотай её пустым `catch {}`.
-- Подписанные ссылки (S3 presigned) истекают: при ошибке воспроизведения один раз запроси
-  свежую ссылку и повтори. Запоминай ключ `номер файла:ссылка`, чтобы не уйти в бесконечный цикл.
-- Сохраняй `playbackRate` при смене трека: iOS сбрасывает скорость при новом `src`.
-- Экран блокировки и фон: Media Session API (`metadata`, `setActionHandler` для play, pause,
-  seek, next, previous). `setPositionState` оборачивай в try/catch — поддержка неполная.
-- Мини-плеер, который переживает переходы между страницами, — один `<audio>` в корне
-  приложения, а не на странице.
-- `playsinline` на каждом `<video>`, иначе iOS открывает полноэкранный плеер; `preload="metadata"`.
-- Превью в ленте — через `poster`, а не автозагрузку видео: иначе мигание и лишний трафик.
+- Call `play()` only from a user gesture and handle the promise:
+  - `NotAllowedError` → show "Tap play again";
+  - `NotSupportedError` → show "This format is not supported on this device".
+  Show the error in the UI; never swallow it with an empty `catch {}`.
+- Signed URLs (S3 presigned) expire: on a playback error request a fresh URL once and retry.
+  Remember the key `fileIndex:url` to avoid an infinite loop.
+- Preserve `playbackRate` across tracks: iOS resets it on a new `src`.
+- Lock screen and background: Media Session API (`metadata`, `setActionHandler` for play, pause,
+  seek, next, previous). Wrap `setPositionState` in try/catch — support is partial.
+- A mini-player that survives navigation = one `<audio>` in the app root, not in a page.
+- `playsinline` on every `<video>` (otherwise iOS opens the fullscreen player); `preload="metadata"`.
+- Feed previews: use `poster`, not video autoload — avoids flicker and wasted traffic.
 
-## 🔎 Из открытых источников
+## 🔎 From public sources
 
-- Автоплей видео разрешён только с `muted` + `playsinline`. В режиме энергосбережения автоплей
-  отключён полностью: всегда задавай `poster` и обрабатывай отклонённый `play()`.
-- Web Audio (`AudioContext`) глушится переключателем «Бесшумно», а `<audio>` и `<video>` — нет.
-  С iOS 17 можно задать `navigator.audioSession.type = 'playback'`. Разблокируй `AudioContext`
-  в `touchend`, `pointerup` или `click`, а не в `touchstart`.
-- После возврата установленной PWA из фона `AudioContext` может молчать при
-  `state === 'running'` — создавай новый контекст. На iOS 26.0–26.1 `<audio>` мог не играть при
-  повторном открытии приложения с экрана «Домой» (исправлено в 26.2).
-- `MediaRecorder`: до iOS 18.4 записывает только MP4 (AAC/H.264), с 18.4 — ещё WebM/Opus и Ogg.
-  Всегда проверяй `MediaRecorder.isTypeSupported()` и сохраняй реальный `recorder.mimeType`.
-  В iOS 26 была регрессия с повреждёнными записями — проверяй каждый загруженный файл на сервере
-  (`ffprobe`). Видео с камеры может требовать учёта поворота.
+- Video autoplay only with `muted` + `playsinline`. Low Power Mode disables autoplay entirely:
+  always set `poster` and handle a rejected `play()`.
+- Web Audio (`AudioContext`) is muted by the silent switch; `<audio>`/`<video>` are not. Since
+  iOS 17 set `navigator.audioSession.type = 'playback'`. Unlock `AudioContext` in `touchend`,
+  `pointerup` or `click`, not `touchstart`.
+- After an installed PWA returns from background, `AudioContext` may be silent while
+  `state === 'running'` → create a new context. On iOS 26.0–26.1 `<audio>` could fail to play when
+  the app was reopened from the Home Screen (fixed in 26.2).
+- `MediaRecorder`: MP4 only (AAC/H.264) before iOS 18.4; WebM/Opus and Ogg since 18.4. Always
+  check `MediaRecorder.isTypeSupported()` and store the real `recorder.mimeType`. iOS 26 had a
+  regression producing corrupted recordings — validate every upload server-side (`ffprobe`).
+  Camera video may need rotation handling.

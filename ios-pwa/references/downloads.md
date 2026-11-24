@@ -1,46 +1,45 @@
-# Скачивание и сохранение файлов
+# Downloading and saving files
 
-Читай этот файл, когда пользователь должен сохранить видео, картинку, PDF или любой другой
-файл, или когда ссылка ведёт из приложения наружу. Готовый код — `../snippets/downloads.ts`.
+Read when the user must save a video, image, PDF or any file, or when a link leads outside the
+app. Code: `../snippets/downloads.ts`.
 
-## Почему это сложно
+## Why it is hard
 
-В установленной PWA:
-- `<a download>` с blob работает плохо или никак;
-- `window.open` после первого `await` блокируется;
-- файл, открытый внутри приложения, оставляет пользователя без кнопки «назад».
-- 🔎 Это подтверждено баг-репортами WebKit: ссылка с `download` или ответ с
-  `Content-Disposition: attachment` открывает экран «Открыть в…» без навигации, и выйти из него
-  можно только перезапуском приложения.
+In an installed PWA:
+- `<a download>` with a blob is unreliable or does nothing;
+- `window.open` after the first `await` is blocked;
+- a file opened inside the app leaves the user with no back button.
+- 🔎 Confirmed by WebKit bug reports: a `download` link or a `Content-Disposition: attachment`
+  response opens an "Open in…" screen with no navigation; only relaunching the app escapes it.
 
-## Рабочие схемы
+## Working patterns
 
-| Что | iOS | Остальные устройства |
+| What | iOS | Other devices |
 |---|---|---|
-| Видео и большие файлы | одноразовый подписанный тикет → `location.href` на **другой домен** (вне scope PWA) с `Content-Disposition: attachment` | `fetch` → blob → `<a download>` |
-| Картинки | `fetch` → `File` → `navigator.share({ files })` (пользователь сохраняет в «Фото»); если не поддерживается — открыть blob в новом окне | `<a download>` |
-| PDF и документы | окно резервируется **синхронно** в обработчике клика (`window.open('about:blank')`), после загрузки ему ставится `location` = blob URL; PDF смотрят в системном просмотрщике, а не в своём | `<a download>` |
+| Video and large files | one-time signed ticket → `location.href` to **another domain** (outside PWA scope) serving `Content-Disposition: attachment` | `fetch` → blob → `<a download>` |
+| Images | `fetch` → `File` → `navigator.share({ files })` (user saves to Photos); unsupported → open blob in a new window | `<a download>` |
+| PDF and documents | reserve the window **synchronously** in the click handler (`window.open('about:blank')`), then set its `location` to the blob URL after fetch; view PDFs in the system viewer, not a custom one | `<a download>` |
 
-## Чек-лист перед тем, как написать код скачивания
+## Checklist before writing download code
 
-- [ ] Тикет: `POST /download-ticket` с авторизацией → JWT со сроком жизни в несколько минут →
-      `GET /download-ticket/:token` без заголовков. Почему: обычный переход по ссылке не может
-      передать `Authorization: Bearer`.
-- [ ] Файл отдаётся с другого поддомена (например, `media.example.com`): уход за scope PWA
-      открывает системную загрузку. С того же origin файл откроется внутри приложения.
-- [ ] Заголовки ответа:
-      `Content-Type` — реальный тип (`video/mp4`), не `application/octet-stream` и не zip
-      (оба варианта пробовали на исходном проекте — хуже);
+- [ ] Ticket: `POST /download-ticket` (authorized) → JWT valid for a few minutes →
+      `GET /download-ticket/:token` with no headers. Why: a plain navigation cannot send
+      `Authorization: Bearer`.
+- [ ] Serve the file from another subdomain (e.g. `media.example.com`): leaving the PWA scope
+      triggers the system download. Same origin → the file opens inside the app.
+- [ ] Response headers:
+      `Content-Type` = the real type (`video/mp4`), not `application/octet-stream` and not a zip
+      (both tried on the source project — worse);
       `Content-Disposition: attachment; filename="ascii-fallback.mp4"; filename*=UTF-8''<percent-encoded>`;
       `Cache-Control: private, no-store`; `X-Content-Type-Options: nosniff`.
-- [ ] Перед `navigator.share({ files })` вызывается `navigator.canShare({ files: [file] })`;
-      `AbortError` (пользователь закрыл меню) не считается ошибкой. Большие видео через меню
-      «Поделиться» не передавай: оно падает по памяти.
-- [ ] Всё, что открывает окно, вызывается синхронно в обработчике клика, до первого `await`.
-- [ ] `URL.revokeObjectURL` на iOS вызывается через 60 секунд: окну нужно время прочитать blob.
-- [ ] Ссылки на страницы своего приложения в пользовательском контенте перехватываются и идут
-      через роутер: `target="_blank"` выкидывает из установленной PWA в Safari.
-- [ ] Ошибка на iOS показывается конкретно («iPhone не смог передать видео в системное
-      сохранение. Освободите память и попробуйте ещё раз») и отправляется в мониторинг.
+- [ ] Call `navigator.canShare({ files: [file] })` before `navigator.share({ files })`;
+      `AbortError` (user closed the sheet) is not an error. Never pass large videos through the
+      Share sheet: it crashes on memory.
+- [ ] Everything that opens a window runs synchronously in the click handler, before the first `await`.
+- [ ] On iOS call `URL.revokeObjectURL` after 60 seconds: the window needs time to read the blob.
+- [ ] Intercept links to the app's own pages inside user content and route them through the
+      router: `target="_blank"` throws the user out of the installed PWA into Safari.
+- [ ] Show a specific iOS error ("iPhone could not hand the video to the system. Free up storage
+      and try again") and report it to monitoring.
 
-Историю из восьми неудачных попыток со скачиванием видео — `iteration-history.md`.
+History of eight failed attempts at video download: `iteration-history.md`.

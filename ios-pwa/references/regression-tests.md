@@ -1,10 +1,10 @@
-# Регрессионные тесты на iOS-инварианты
+# Regression tests for iOS invariants
 
-Читай этот файл, когда закрепляешь iOS-фикс тестом. Пути и имена классов ниже — из
-исходного проекта (Nuxt); замени их на свои. `dock` в коде — это нижнее меню.
+Read when locking an iOS fix with a test. Paths and class names come from the source project
+(Nuxt); replace them with your own. `dock` in the code = the bottom bar.
 
-Без айфона под рукой лучшая защита — тесты, которые читают исходники и проверяют, что
-iOS-фикс не «отрефакторили». Пример на bun/vitest (читают файлы как текст):
+Without an iPhone at hand, the best protection is tests that read the source and assert the iOS
+fix was not refactored away. Example for bun/vitest (files read as text):
 
 ```ts
 import { readFileSync } from 'node:fs'
@@ -33,13 +33,13 @@ describe('iOS PWA invariants', () => {
     expect(lock).not.toMatch(/body\.style\.position\s*=\s*'fixed'/)
   })
   test('every <video> is playsinline', () => {
-    // пройти по components/**/*.vue и проверить, что у каждого <video ...> есть playsinline
+    // glob components/**/*.vue and assert every <video ...> has playsinline
   })
 })
 ```
 
-Также полезно:
-- unit-тест детекта iOS (iPhone, iPad, iPad-как-Mac с touch, Android = false);
-- тест, что API не отдаёт `audio/ogg`/`audio/webm` после загрузки (конвертация сработала);
-- тест имени файла из `Content-Disposition` с `filename*=UTF-8''`;
-- тест стратегии релизов (первый визит не перезагружает, не перезагружать дважды и т.д.).
+Also useful:
+- unit test for iOS detection (iPhone, iPad, iPad-as-Mac with touch, Android = false);
+- test that the API never serves `audio/ogg`/`audio/webm` after upload (transcoding worked);
+- test for the file name parsed from `Content-Disposition` with `filename*=UTF-8''`;
+- release-strategy tests (first visit does not reload, never reload twice, etc.).
